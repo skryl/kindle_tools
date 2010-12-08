@@ -1,0 +1,89 @@
+#!/usr/bin/env ruby
+#
+require 'rubygems'
+require 'mechanize'
+require 'optparse'
+require 'sanitize'
+
+PARAGRAPH_OFFSET = 4
+HEADER = "<html><head><meta http-equiv=\"content-type\" content=\"text/html; charset=KOI8-R\"></head><body>"
+FOOTER = "</body></html>"
+
+def paragraph_offset
+  PARAGRAPH_OFFSET * " "
+end
+
+def make_kindle_friendly(raw_html)
+  txt = Sanitize.clean(raw_html)
+  kindle_text = txt.inject("") do |text, line|
+    if line[0] =~ /\s/ 
+      text << paragraph_offset
+    end
+    text << line.strip
+  end
+  HEADER + kindle_text + FOOTER
+end
+
+args = Hash.new
+options = OptionParser.new do |opts|
+  opts.on("-h", "--help", "Show this message") { 
+    puts opts 
+    exit
+  }
+  opts.on("-f", "--filename [PATH]", Array, "Path[s] of file[s] to covert") { |opt| args[:path] = opt }
+  opts.on("-u", "--url [URL]", Array, "URL[s] of text[s] to convert") { |opt| args[:url] = opt }  
+  opts.on("-o", "--filename [PATH]", String, "Path of output file") { |opt| args[:out] = opt }  
+end
+
+begin
+  options.parse!(ARGV)
+rescue OptionParser::ParseError => e
+  puts e
+end
+
+if !args[:path] and !args[:url]
+  puts options
+  exit
+end
+
+if path_list = args[:path]
+  path_list.each_with_index do |p,i|
+    begin
+      f = File.open(p)
+      raw_txt = f.read
+      kindle_text = make_kindle_friendly(raw_txt)
+      file_out = args[:out] || p.split("/").last
+      file_out += ".html"
+      f_out = File.open(file_out, "w")
+      f_out << kindle_text
+      puts f_out
+    rescue  => e
+      puts e
+    end
+  end
+end
+
+if url_list = args[:url]
+  agent = WWW::Mechanize.new
+  url_list.each_with_index do |url,i|
+    begin
+      raw_html = agent.get(url).content
+      kindle_text = make_kindle_friendly(raw_html)
+      file_out = args[:out] || url.split("/").last
+      file_out += ".html"
+      f_out = File.open(file_out, "w")
+      f_out << kindle_text
+    rescue  => e
+      puts e
+    end
+  end
+end
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,101 @@
+#!/usr/bin/env ruby
+#
+#TODO:
+#-sorting by date doesn't preserve title/author
+
+require 'rubygems'
+require 'optparse'
+
+SPLIT_BY = :title #:none or note attr
+
+DIVIDER = /\r\n={10}\r\n/
+TITLE = /\A(.*) (\Z|\((.*)\)\Z)/
+DETAILS = /\A- Highlight Loc\. (.*) \| Added on .*, (.*), (.*), (.*)\Z/
+
+
+class ClipParser
+
+def self.parse_clippings(args = {})
+  return unless args[:paths]
+  file_contents = ''
+
+  args[:paths].each do |path|
+    if !File.exists?(path)
+      puts "ATTN: Cannot find clippings file '#{path}'"
+      next
+    end
+
+    File.open(path) { |f| file_contents << f.read }
+  end
+
+  raw_notes = file_contents.split(DIVIDER)
+  all_notes = []
+  notes_by_key = Hash.new {|hash, key| hash[key] = [] }
+
+  raw_notes.each do |raw_note|
+    note = {}
+    lines = raw_note.split("\r\n")
+
+    book_details = lines[0].match(TITLE)
+    next unless book_details
+    note[:title], note[:author] = (book_details[1] || '').strip, (book_details[3] || '').strip
+  #puts "title: #{title}"
+  #puts "author: #{author}"
+    
+
+    note_details = lines[1].match(DETAILS)
+    next unless note_details
+    note[:loc] = (note_details[1] || '').strip
+  #puts "loc: #{loc}"
+    day, year, time = note_details[2], note_details[3], note_details[4]
+    note[:date] = "#{day}, #{year}"
+    note[:text] = (lines[2..-1].join || '').strip
+
+    all_notes.push note
+  end
+
+  #sort 
+  split_by = args[:sort] || SPLIT_BY
+  all_notes.each do |n|
+    notes_by_key[n[split_by]].push n
+  end
+
+  #write to file/s   
+  notes_by_key.each do |split_by, notes|
+    notes = notes.sort_by {|n| n[:loc].to_i }
+    title, author = notes.first[:title], notes.first[:author]
+
+    filename = split_by.gsub(' ','_') + '.txt'
+    File.open(filename, "a") do |f|
+      f << "Title: #{title}\nAuthor: #{author}\n\n"
+      notes.each do |n|
+        f << "--- #{n[:date]} --- #{n[:loc]} ---" 
+        f << "\n\n#{n[:text]}\n\n"
+      end
+    end
+  end
+end
+
+end
+
+
+###############################################################################
+
+
+args = Hash.new
+options = OptionParser.new do |opts|
+  opts.on("-f", "--filename [PATH]", Array, "Path[s] of file[s] to covert") { |opt| args[:paths] = opt }
+  opts.on("-s", "--split [KEY]", String, "Attribute to sort by (title|author|loc|date|text)") { |opt| args[:sort] = opt.to_sym }  
+  opts.on("-h", "--help", "Show this message") { 
+    puts opts 
+    exit
+  }
+end
+
+begin
+  options.parse!(ARGV)
+rescue OptionParser::ParseError => e
+  puts e
+end
+
+ClipParser.parse_clippings(args)
